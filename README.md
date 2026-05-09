@@ -1,8 +1,8 @@
-# Eyeva · [github.com/av29nassh-sketch/eyeva](https://github.com/av29nassh-sketch/eyeva)
+# Seer · [github.com/av29nassh-sketch/seer](https://github.com/av29nassh-sketch/seer)
 
 Give AI agents structured vision and control over the Windows desktop — no screenshots, no OCR.
 
-Eyeva is an MCP server that exposes Windows UI Automation (UIA) as tools any AI agent can call. Instead of "look at a screenshot and guess," your agent reads a real semantic element tree and acts on exact elements by ID.
+Seer is an MCP server that exposes Windows UI Automation (UIA) as tools any AI agent can call. Instead of "look at a screenshot and guess," your agent reads a real semantic element tree and acts on exact elements by ID.
 
 ## Works with
 
@@ -14,7 +14,7 @@ Eyeva is an MCP server that exposes Windows UI Automation (UIA) as tools any AI 
 ## Install
 
 ```bash
-pip install eyeva
+pip install seer
 ```
 
 Requires Windows 10/11. Python 3.10+.
@@ -26,8 +26,8 @@ Add to your `.claude/mcp.json` (or Claude Desktop config):
 ```json
 {
   "mcpServers": {
-    "eyeva": {
-      "command": "eyeva"
+    "seer": {
+      "command": "seer"
     }
   }
 }
@@ -58,7 +58,7 @@ Agent: get_element_tree
      ...
    ]}
 
-Agent: type_text(element_id=1, text="Hello from Eyeva")
+Agent: type_text(element_id=1, text="Hello from Seer")
 → { "success": true }
 ```
 

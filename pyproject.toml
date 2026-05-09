@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "eyeva"
+name = "seer"
 version = "0.1.0"
 description = "Give AI agents structured vision and control over the Windows desktop via MCP"
 readme = "README.md"
@@ -16,8 +16,8 @@ dependencies = [
 ]
 
 [project.scripts]
-eyeva = "eyeva.server:main"
+seer = "seer.server:main"
 
 [project.urls]
-Homepage = "https://github.com/av29nassh-sketch/eyeva"
-Issues = "https://github.com/av29nassh-sketch/eyeva/issues"
+Homepage = "https://github.com/av29nassh-sketch/seer"
+Issues = "https://github.com/av29nassh-sketch/seer/issues"
