@@ -62,6 +62,21 @@ async def list_tools() -> list[types.Tool]:
         ),
         # ── Browser tools ──────────────────────────────────────────────
         types.Tool(
+            name="browser_navigate",
+            description=(
+                "Open a URL in Chrome and return the page content once loaded. "
+                "Handles opening Chrome and focusing the tab automatically — "
+                "no manual tab switching required. Use this whenever you need to visit a URL."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "Full URL to navigate to"}
+                },
+                "required": ["url"],
+            },
+        ),
+        types.Tool(
             name="get_browser_page",
             description=(
                 "Returns the URL, title, and a filtered node tree of the active Chrome tab. "
@@ -125,6 +140,25 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         element_id = arguments.get("element_id")
         text = arguments.get("text", "")
         result = type_into_element(int(element_id), text) if element_id is not None else {"error": "element_id required"}
+
+    elif name == "browser_navigate":
+        import subprocess, time
+        url = arguments.get("url", "")
+        subprocess.Popen(f'start chrome "{url}"', shell=True)
+        await asyncio.sleep(2.5)
+        # Retry until the page loads (up to 15s)
+        deadline = time.time() + 15
+        result = {"error": "Page did not load within 15 seconds"}
+        while time.time() < deadline:
+            page = await asyncio.get_event_loop().run_in_executor(
+                None, bridge.send_command, {"type": "GET_DOM"}
+            )
+            if page.get("ok"):
+                page_url = page.get("data", {}).get("url", "")
+                if page_url and not page_url.startswith("chrome-extension://"):
+                    result = page.get("data", page)
+                    break
+            await asyncio.sleep(1)
 
     elif name == "get_browser_page":
         result = await asyncio.get_event_loop().run_in_executor(

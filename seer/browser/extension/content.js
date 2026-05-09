@@ -103,6 +103,7 @@ async function postResult(result) {
 }
 
 async function poll() {
+  if (document.visibilityState !== 'visible') return;
   try {
     const res = await fetch(`${BRIDGE}/command`, { method: 'GET' });
     if (res.status === 204) return; // no pending command
