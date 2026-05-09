@@ -1,51 +1,47 @@
-// Content script — runs in every page, extracts a filtered DOM snapshot
+// Content script — polls bridge for commands and executes them in the page
+
+const BRIDGE = 'http://127.0.0.1:7842';
+const POLL_MS = 400;
+
+// ── DOM extraction ──────────────────────────────────────────────────────────
+
+const SKIP_TAGS = new Set(['script','style','noscript','svg','path','meta','link','head']);
+const INTERACTIVE_ROLES = new Set([
+  'button','link','textbox','searchbox','combobox','listbox',
+  'menuitem','tab','checkbox','radio','switch','slider'
+]);
+const MAX_NODES = 200;
 
 function extractDOM() {
-  const MAX_NODES = 200;
   const nodes = [];
   let counter = 0;
 
-  const SKIP_TAGS = new Set([
-    'script', 'style', 'noscript', 'svg', 'path', 'meta', 'link', 'head'
-  ]);
-
-  const INTERACTIVE_ROLES = new Set([
-    'button', 'link', 'textbox', 'searchbox', 'combobox', 'listbox',
-    'menuitem', 'tab', 'checkbox', 'radio', 'switch', 'slider'
-  ]);
-
   function walk(el, depth) {
     if (counter >= MAX_NODES || depth > 8) return;
-    if (SKIP_TAGS.has(el.tagName?.toLowerCase())) return;
+    if (!el || SKIP_TAGS.has(el.tagName?.toLowerCase())) return;
 
     const tag = el.tagName?.toLowerCase() || '';
-    const role = el.getAttribute?.('aria-label') ? el.getAttribute('aria-label') : '';
     const ariaRole = el.getAttribute?.('role') || '';
+    const ariaLabel = el.getAttribute?.('aria-label') || '';
     const text = (el.innerText || el.textContent || '').trim().slice(0, 100);
-    const id = el.id || '';
-    const cls = (el.className && typeof el.className === 'string')
-      ? el.className.split(' ').filter(Boolean).slice(0, 3).join(' ')
-      : '';
-    const href = el.href || '';
     const placeholder = el.placeholder || '';
-    const value = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') ? (el.value || '') : '';
+    const value = (tag === 'input' || tag === 'textarea') ? (el.value || '') : '';
+    const href = el.href || '';
     const type = el.type || '';
+    const id = el.id || '';
 
     const isInteractive =
-      ['a', 'button', 'input', 'textarea', 'select', 'label'].includes(tag) ||
+      ['a','button','input','textarea','select'].includes(tag) ||
       INTERACTIVE_ROLES.has(ariaRole) ||
       el.getAttribute?.('onclick') != null ||
       el.getAttribute?.('tabindex') != null;
 
-    const hasText = text.length > 0;
-
-    if (isInteractive || hasText) {
+    if (isInteractive || text.length > 0) {
       const node = { id: counter, tag, depth };
-      if (role) node.aria_label = role;
+      if (ariaLabel) node.aria_label = ariaLabel;
       if (ariaRole) node.role = ariaRole;
       if (text && text !== placeholder) node.text = text.slice(0, 80);
       if (id) node.element_id = id;
-      if (cls) node.classes = cls;
       if (href) node.href = href.slice(0, 120);
       if (placeholder) node.placeholder = placeholder;
       if (value) node.value = value.slice(0, 80);
@@ -54,13 +50,10 @@ function extractDOM() {
       counter++;
     }
 
-    for (const child of el.children) {
-      walk(child, depth + 1);
-    }
+    for (const child of el.children) walk(child, depth + 1);
   }
 
   walk(document.body, 0);
-
   return {
     url: location.href,
     title: document.title,
@@ -71,27 +64,19 @@ function extractDOM() {
 }
 
 function findElement(nodeId) {
-  // Re-walk to find element by its position in our filtered tree
-  const MAX_NODES = 200;
-  const SKIP_TAGS = new Set(['script','style','noscript','svg','path','meta','link','head']);
-  const INTERACTIVE_ROLES = new Set([
-    'button','link','textbox','searchbox','combobox','listbox',
-    'menuitem','tab','checkbox','radio','switch','slider'
-  ]);
-
   let counter = 0;
   let found = null;
 
   function walk(el, depth) {
     if (found || counter >= MAX_NODES || depth > 8) return;
-    if (SKIP_TAGS.has(el.tagName?.toLowerCase())) return;
+    if (!el || SKIP_TAGS.has(el.tagName?.toLowerCase())) return;
 
     const tag = el.tagName?.toLowerCase() || '';
     const ariaRole = el.getAttribute?.('role') || '';
     const text = (el.innerText || el.textContent || '').trim();
 
     const isInteractive =
-      ['a','button','input','textarea','select','label'].includes(tag) ||
+      ['a','button','input','textarea','select'].includes(tag) ||
       INTERACTIVE_ROLES.has(ariaRole) ||
       el.getAttribute?.('onclick') != null ||
       el.getAttribute?.('tabindex') != null;
@@ -100,7 +85,6 @@ function findElement(nodeId) {
       if (counter === nodeId) { found = el; return; }
       counter++;
     }
-
     for (const child of el.children) walk(child, depth + 1);
   }
 
@@ -108,24 +92,53 @@ function findElement(nodeId) {
   return found;
 }
 
-// Listen for commands from background script
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.type === 'GET_DOM') {
-    sendResponse({ ok: true, data: extractDOM() });
-  } else if (msg.type === 'CLICK') {
-    const el = findElement(msg.nodeId);
-    if (!el) { sendResponse({ ok: false, error: `Node ${msg.nodeId} not found` }); return; }
-    el.scrollIntoView({ block: 'center' });
-    el.click();
-    sendResponse({ ok: true, tag: el.tagName?.toLowerCase() });
-  } else if (msg.type === 'TYPE') {
-    const el = findElement(msg.nodeId);
-    if (!el) { sendResponse({ ok: false, error: `Node ${msg.nodeId} not found` }); return; }
-    el.focus();
-    el.value = msg.text;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    sendResponse({ ok: true });
+// ── Bridge polling ──────────────────────────────────────────────────────────
+
+async function postResult(result) {
+  await fetch(`${BRIDGE}/result`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(result)
+  });
+}
+
+async function poll() {
+  try {
+    const res = await fetch(`${BRIDGE}/command`, { method: 'GET' });
+    if (res.status === 204) return; // no pending command
+    if (!res.ok) return;
+
+    const cmd = await res.json();
+    if (!cmd?.type) return;
+
+    if (cmd.type === 'GET_DOM') {
+      await postResult({ ok: true, data: extractDOM() });
+
+    } else if (cmd.type === 'CLICK') {
+      const el = findElement(cmd.nodeId);
+      if (!el) {
+        await postResult({ ok: false, error: `Node ${cmd.nodeId} not found` });
+        return;
+      }
+      el.scrollIntoView({ block: 'center' });
+      el.click();
+      await postResult({ ok: true, tag: el.tagName?.toLowerCase() });
+
+    } else if (cmd.type === 'TYPE') {
+      const el = findElement(cmd.nodeId);
+      if (!el) {
+        await postResult({ ok: false, error: `Node ${cmd.nodeId} not found` });
+        return;
+      }
+      el.focus();
+      el.value = cmd.text;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      await postResult({ ok: true });
+    }
+  } catch (_) {
+    // Bridge not running or network error — silently skip
   }
-  return true; // keep channel open for async
-});
+}
+
+setInterval(poll, POLL_MS);
