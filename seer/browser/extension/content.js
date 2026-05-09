@@ -136,13 +136,19 @@ async function poll() {
       el.dispatchEvent(new Event('change', { bubbles: true }));
       await postResult({ ok: true });
 
-    } else if (cmd.type === 'EVAL') {
-      try {
-        const result = eval(cmd.code); // eslint-disable-line no-eval
-        await postResult({ ok: true, result: result !== undefined ? String(result) : '' });
-      } catch (e) {
-        await postResult({ ok: false, error: e.message });
+    } else if (cmd.type === 'QUERY_CLICK') {
+      const els = document.querySelectorAll(cmd.selector);
+      els.forEach(el => el.click());
+      await postResult({ ok: true, count: els.length });
+
+    } else if (cmd.type === 'QUERY_DBLCLICK') {
+      const el = document.querySelector(cmd.selector);
+      if (!el) {
+        await postResult({ ok: false, error: `No element found: ${cmd.selector}` });
+        return;
       }
+      el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+      await postResult({ ok: true });
     }
   } catch (_) {
     // Bridge not running or network error — silently skip

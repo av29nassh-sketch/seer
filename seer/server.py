@@ -62,18 +62,31 @@ async def list_tools() -> list[types.Tool]:
         ),
         # ── Browser tools ──────────────────────────────────────────────
         types.Tool(
-            name="browser_eval",
+            name="browser_query_click",
             description=(
-                "Execute JavaScript in the active Chrome tab and return the result. "
-                "Use for closing dialogs, clicking elements by selector, reading DOM values, "
-                "or any interaction that browser_click can't handle cleanly."
+                "Click all elements matching a CSS selector on the active Chrome tab. "
+                "Use for closing dialogs, clicking buttons by aria-label, etc."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "code": {"type": "string", "description": "JavaScript to execute in the page context"}
+                    "selector": {"type": "string", "description": "CSS selector to match elements"}
                 },
-                "required": ["code"],
+                "required": ["selector"],
+            },
+        ),
+        types.Tool(
+            name="browser_dblclick",
+            description=(
+                "Double-click the first element matching a CSS selector on the active Chrome tab. "
+                "Required for Spotify track rows and other double-click interactions."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string", "description": "CSS selector for the element to double-click"}
+                },
+                "required": ["selector"],
             },
         ),
         types.Tool(
@@ -156,10 +169,16 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         text = arguments.get("text", "")
         result = type_into_element(int(element_id), text) if element_id is not None else {"error": "element_id required"}
 
-    elif name == "browser_eval":
-        code = arguments.get("code", "")
+    elif name == "browser_query_click":
+        selector = arguments.get("selector", "")
         result = await asyncio.get_event_loop().run_in_executor(
-            None, bridge.send_command, {"type": "EVAL", "code": code}
+            None, bridge.send_command, {"type": "QUERY_CLICK", "selector": selector}
+        )
+
+    elif name == "browser_dblclick":
+        selector = arguments.get("selector", "")
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, bridge.send_command, {"type": "QUERY_DBLCLICK", "selector": selector}
         )
 
     elif name == "browser_navigate":
