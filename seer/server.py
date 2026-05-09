@@ -1,4 +1,4 @@
-"""Eyeva MCP server — gives AI agents structured vision + control over Windows desktop."""
+"""Seer MCP server — gives AI agents structured vision + control over Windows desktop."""
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -7,7 +7,7 @@ from mcp import types
 from .uia.tree import get_active_window_tree
 from .uia.actions import click_element, type_into_element
 
-app = Server("eyeva")
+app = Server("seer")
 
 
 @app.list_tools()
