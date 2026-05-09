@@ -15,26 +15,23 @@ Seer is an MCP server that exposes Windows UI Automation (UIA) as tools any AI a
 
 ```bash
 pip install seer
+python -c "import seer; import runpy; runpy.run_path('install.py')"
 ```
 
-Requires Windows 10/11. Python 3.10+.
+Or clone and run directly:
+
+```bash
+git clone https://github.com/av29nassh-sketch/seer
+cd seer
+pip install -e .
+python install.py
+```
+
+Requires Windows 10/11. Python 3.10+. Restart Claude Code after installing.
 
 ## Usage with Claude Code
 
-Add to your `.claude/mcp.json` (or Claude Desktop config):
-
-```json
-{
-  "mcpServers": {
-    "seer": {
-      "command": "python",
-      "args": ["-m", "seer"]
-    }
-  }
-}
-```
-
-Then in Claude:
+After running `install.py`, restart Claude Code. Then:
 
 ```
 get the active window, then show me what's clickable
