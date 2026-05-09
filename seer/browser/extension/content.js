@@ -103,7 +103,6 @@ async function postResult(result) {
 }
 
 async function poll() {
-  if (document.visibilityState !== 'visible') return;
   try {
     const res = await fetch(`${BRIDGE}/command`, { method: 'GET' });
     if (res.status === 204) return; // no pending command
@@ -136,6 +135,14 @@ async function poll() {
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
       await postResult({ ok: true });
+
+    } else if (cmd.type === 'EVAL') {
+      try {
+        const result = eval(cmd.code); // eslint-disable-line no-eval
+        await postResult({ ok: true, result: result !== undefined ? String(result) : '' });
+      } catch (e) {
+        await postResult({ ok: false, error: e.message });
+      }
     }
   } catch (_) {
     // Bridge not running or network error — silently skip
