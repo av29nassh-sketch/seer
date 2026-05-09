@@ -49,11 +49,25 @@ def iter_tree(root: auto.Control, depth: int = 0, counter: list[int] | None = No
             yield from iter_tree(child, depth, counter)
 
 
-def get_active_window_tree() -> dict:
-    """Return a compact filtered element tree for the foreground window."""
-    fw = auto.GetForegroundControl()
-    if fw is None:
-        return {"error": "No foreground window found"}
+def find_window_by_title(title: str) -> auto.Control | None:
+    """Find the first top-level window whose title contains the given string (case-insensitive)."""
+    title_lower = title.lower()
+    for ctrl in auto.GetRootControl().GetChildren():
+        if title_lower in (ctrl.Name or "").lower():
+            return ctrl
+    return None
+
+
+def get_active_window_tree(window: str | None = None) -> dict:
+    """Return a compact filtered element tree for the foreground window, or a named window."""
+    if window:
+        fw = find_window_by_title(window)
+        if fw is None:
+            return {"error": f"No window found matching '{window}'"}
+    else:
+        fw = auto.GetForegroundControl()
+        if fw is None:
+            return {"error": "No foreground window found"}
 
     nodes = []
     for node_id, control, depth in iter_tree(fw):
