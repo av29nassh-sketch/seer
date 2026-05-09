@@ -54,10 +54,23 @@ def click_element(element_id: int, window: str | None = None) -> dict:
     control = _find_by_id(element_id, window)
     if control is None:
         return {"error": f"Element id {element_id} not found in current window"}
+    name = (control.Name or "").strip()
+    try:
+        invoke = control.GetInvokePattern()
+        invoke.Invoke()
+        return {"success": True, "element": name, "method": "invoke"}
+    except Exception:
+        pass
+    try:
+        toggle = control.GetTogglePattern()
+        toggle.Toggle()
+        return {"success": True, "element": name, "method": "toggle"}
+    except Exception:
+        pass
     try:
         _move_cursor_to(control)
         control.Click()
-        return {"success": True, "element": (control.Name or "").strip()}
+        return {"success": True, "element": name, "method": "physical_click"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -67,10 +80,11 @@ def double_click_element(element_id: int, window: str | None = None) -> dict:
     control = _find_by_id(element_id, window)
     if control is None:
         return {"error": f"Element id {element_id} not found in current window"}
+    name = (control.Name or "").strip()
     try:
         _move_cursor_to(control)
         control.DoubleClick()
-        return {"success": True, "element": (control.Name or "").strip()}
+        return {"success": True, "element": name, "method": "physical_doubleclick"}
     except Exception as e:
         return {"error": str(e)}
 
