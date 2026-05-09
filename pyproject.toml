@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "eyeva"
+version = "0.1.0"
+description = "Give AI agents structured vision and control over the Windows desktop via MCP"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "AGPL-3.0-or-later"}
+keywords = ["mcp", "windows", "uia", "automation", "ai-agent", "desktop"]
+dependencies = [
+    "mcp>=1.0.0",
+    "uiautomation>=2.0.0",
+]
+
+[project.scripts]
+eyeva = "eyeva.server:main"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/eyeva"
+Issues = "https://github.com/yourusername/eyeva/issues"
