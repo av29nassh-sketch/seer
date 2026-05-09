@@ -10,6 +10,11 @@ import asyncio
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
+
+
+class _ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
 
 PORT = 7842
 _pending_command: dict | None = None
@@ -68,12 +73,12 @@ class _Handler(BaseHTTPRequestHandler):
 
 def start(port: int = PORT) -> None:
     """Start the bridge server in a background daemon thread."""
-    server = HTTPServer(('127.0.0.1', port), _Handler)
+    server = _ThreadingHTTPServer(('127.0.0.1', port), _Handler)
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
 
 
-def send_command(cmd: dict, timeout: float = 5.0) -> dict:
+def send_command(cmd: dict, timeout: float = 10.0) -> dict:
     """
     Send a command to the Chrome extension and wait for the result.
     Blocks until the extension responds or timeout expires.
