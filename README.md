@@ -27,7 +27,8 @@ Add to your `.claude/mcp.json` (or Claude Desktop config):
 {
   "mcpServers": {
     "seer": {
-      "command": "seer"
+      "command": "python",
+      "args": ["-m", "seer"]
     }
   }
 }
