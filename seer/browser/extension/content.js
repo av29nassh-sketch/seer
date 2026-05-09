@@ -17,7 +17,7 @@ function extractDOM() {
   let counter = 0;
 
   function walk(el, depth) {
-    if (counter >= MAX_NODES || depth > 8) return;
+    if (counter >= MAX_NODES || depth > 12) return;
     if (!el || SKIP_TAGS.has(el.tagName?.toLowerCase())) return;
 
     const tag = el.tagName?.toLowerCase() || '';
@@ -68,7 +68,7 @@ function findElement(nodeId) {
   let found = null;
 
   function walk(el, depth) {
-    if (found || counter >= MAX_NODES || depth > 8) return;
+    if (found || counter >= MAX_NODES || depth > 12) return;
     if (!el || SKIP_TAGS.has(el.tagName?.toLowerCase())) return;
 
     const tag = el.tagName?.toLowerCase() || '';
@@ -134,6 +134,10 @@ async function poll() {
       el.value = cmd.text;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
+      await postResult({ ok: true });
+
+    } else if (cmd.type === 'NAVIGATE') {
+      location.href = cmd.url;
       await postResult({ ok: true });
 
     } else if (cmd.type === 'QUERY_CLICK') {

@@ -5,7 +5,7 @@ from mcp.server.stdio import stdio_server
 from mcp import types
 
 from .uia.tree import get_active_window_tree
-from .uia.actions import click_element, type_into_element
+from .uia.actions import click_element, double_click_element, type_into_element
 from .browser import bridge
 
 app = Server("seer")
@@ -26,22 +26,48 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="get_element_tree",
             description=(
-                "Returns a filtered, numbered element tree for the active native window. "
-                "Each element has an id, name, role, and optional value. "
+                "Returns a filtered, numbered element tree for the active native window, "
+                "or a specific window by title. Pass window='Spotify' to read Spotify even "
+                "when it's not in focus. Each element has an id, name, role, and optional value. "
                 "Use the ids from this tree with click or type_text."
             ),
-            inputSchema={"type": "object", "properties": {}, "required": []},
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "window": {
+                        "type": "string",
+                        "description": "Partial window title to target (e.g. 'Spotify'). Omit to use foreground window.",
+                    }
+                },
+                "required": [],
+            },
         ),
         types.Tool(
             name="click",
-            description="Click a native UI element by its id from get_element_tree.",
+            description="Click a native UI element by its id from get_element_tree. Pass window= to target a background window.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "element_id": {
                         "type": "integer",
                         "description": "The id field from get_element_tree output",
-                    }
+                    },
+                    "window": {"type": "string", "description": "Partial window title (optional)"},
+                },
+                "required": ["element_id"],
+            },
+        ),
+        types.Tool(
+            name="double_click",
+            description="Double-click a native UI element by its id from get_element_tree. Use for list items that require double-click to activate (e.g. Spotify tracks). Pass window= to target a background window.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "element_id": {
+                        "type": "integer",
+                        "description": "The id field from get_element_tree output",
+                    },
+                    "window": {"type": "string", "description": "Partial window title (optional)"},
                 },
                 "required": ["element_id"],
             },
@@ -49,13 +75,14 @@ async def list_tools() -> list[types.Tool]:
         types.Tool(
             name="type_text",
             description=(
-                "Type text into a native UI element by its id from get_element_tree."
+                "Type text into a native UI element by its id from get_element_tree. Pass window= to target a background window."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "element_id": {"type": "integer"},
                     "text": {"type": "string"},
+                    "window": {"type": "string", "description": "Partial window title (optional)"},
                 },
                 "required": ["element_id", "text"],
             },
@@ -158,16 +185,20 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             result = {"error": tree["error"]}
 
     elif name == "get_element_tree":
-        result = get_active_window_tree()
+        result = get_active_window_tree(window=arguments.get("window"))
 
     elif name == "click":
         element_id = arguments.get("element_id")
-        result = click_element(int(element_id)) if element_id is not None else {"error": "element_id required"}
+        result = click_element(int(element_id), window=arguments.get("window")) if element_id is not None else {"error": "element_id required"}
+
+    elif name == "double_click":
+        element_id = arguments.get("element_id")
+        result = double_click_element(int(element_id), window=arguments.get("window")) if element_id is not None else {"error": "element_id required"}
 
     elif name == "type_text":
         element_id = arguments.get("element_id")
         text = arguments.get("text", "")
-        result = type_into_element(int(element_id), text) if element_id is not None else {"error": "element_id required"}
+        result = type_into_element(int(element_id), text, window=arguments.get("window")) if element_id is not None else {"error": "element_id required"}
 
     elif name == "browser_query_click":
         selector = arguments.get("selector", "")
@@ -185,10 +216,24 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         import subprocess, time
         from urllib.parse import urlparse
         url = arguments.get("url", "")
-        target_domain = urlparse(url).netloc  # e.g. "open.spotify.com"
-        subprocess.Popen(f'start chrome "{url}"', shell=True)
-        await asyncio.sleep(2.5)
-        # Retry until the active tab URL matches the target domain
+        parsed = urlparse(url)
+        target_domain = parsed.netloc
+        target_path = parsed.path.rstrip("/")
+
+        # Try to navigate the existing tab first; fall back to opening new tab
+        ping = await asyncio.get_event_loop().run_in_executor(
+            None, bridge.send_command, {"type": "GET_DOM"}
+        )
+        if ping.get("ok"):
+            await asyncio.get_event_loop().run_in_executor(
+                None, bridge.send_command, {"type": "NAVIGATE", "url": url}
+            )
+            await asyncio.sleep(2.5)
+        else:
+            subprocess.Popen(f'start chrome "{url}"', shell=True)
+            await asyncio.sleep(3.0)
+
+        # Retry until the active tab URL matches domain + path
         deadline = time.time() + 15
         result = {"error": "Page did not load within 15 seconds"}
         while time.time() < deadline:
@@ -197,7 +242,9 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             )
             if page.get("ok"):
                 page_url = page.get("data", {}).get("url", "")
-                if page_url and target_domain in page_url:
+                page_parsed = urlparse(page_url)
+                if (page_parsed.netloc == target_domain and
+                        page_parsed.path.rstrip("/") == target_path):
                     result = page.get("data", page)
                     break
             await asyncio.sleep(1.5)
