@@ -7,6 +7,7 @@ from mcp import types
 from .uia.tree import get_active_window_tree
 from .uia.actions import click_element, double_click_element, type_into_element
 from .browser import bridge
+from .spotify import client as spotify
 
 app = Server("seer")
 
@@ -170,6 +171,50 @@ async def list_tools() -> list[types.Tool]:
                 "required": ["node_id", "text"],
             },
         ),
+        # ── Spotify tools ──────────────────────────────────────────────
+        types.Tool(
+            name="spotify_search",
+            description="Search for tracks on Spotify. Returns name, artist, album, and URI for each result.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query (song name, artist, etc.)"},
+                    "limit": {"type": "integer", "description": "Max results to return (default 5)"},
+                },
+                "required": ["query"],
+            },
+        ),
+        types.Tool(
+            name="spotify_play",
+            description="Play a Spotify track by URI (from spotify_search). Starts playback on the active device.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "uri": {"type": "string", "description": "Spotify track URI e.g. spotify:track:xxx"},
+                },
+                "required": ["uri"],
+            },
+        ),
+        types.Tool(
+            name="spotify_pause",
+            description="Pause Spotify playback.",
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        types.Tool(
+            name="spotify_next",
+            description="Skip to the next track on Spotify.",
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        types.Tool(
+            name="spotify_previous",
+            description="Go to the previous track on Spotify.",
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        types.Tool(
+            name="spotify_current",
+            description="Get the currently playing track on Spotify.",
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
     ]
 
 
@@ -274,6 +319,34 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             result = await asyncio.get_event_loop().run_in_executor(
                 None, bridge.send_command, {"type": "TYPE", "nodeId": int(node_id), "text": text}
             )
+
+    elif name == "spotify_search":
+        query = arguments.get("query", "")
+        limit = int(arguments.get("limit", 5))
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: spotify.search(query, limit)
+        )
+
+    elif name == "spotify_play":
+        uri = arguments.get("uri")
+        if not uri:
+            result = {"error": "uri required"}
+        else:
+            result = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: spotify.play(uri)
+            )
+
+    elif name == "spotify_pause":
+        result = await asyncio.get_event_loop().run_in_executor(None, spotify.pause)
+
+    elif name == "spotify_next":
+        result = await asyncio.get_event_loop().run_in_executor(None, spotify.next_track)
+
+    elif name == "spotify_previous":
+        result = await asyncio.get_event_loop().run_in_executor(None, spotify.previous_track)
+
+    elif name == "spotify_current":
+        result = await asyncio.get_event_loop().run_in_executor(None, spotify.get_current)
 
     else:
         result = {"error": f"Unknown tool: {name}"}
