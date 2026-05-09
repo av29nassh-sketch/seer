@@ -62,6 +62,21 @@ async def list_tools() -> list[types.Tool]:
         ),
         # ── Browser tools ──────────────────────────────────────────────
         types.Tool(
+            name="browser_eval",
+            description=(
+                "Execute JavaScript in the active Chrome tab and return the result. "
+                "Use for closing dialogs, clicking elements by selector, reading DOM values, "
+                "or any interaction that browser_click can't handle cleanly."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "JavaScript to execute in the page context"}
+                },
+                "required": ["code"],
+            },
+        ),
+        types.Tool(
             name="browser_navigate",
             description=(
                 "Open a URL in Chrome and return the page content once loaded. "
@@ -141,12 +156,20 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         text = arguments.get("text", "")
         result = type_into_element(int(element_id), text) if element_id is not None else {"error": "element_id required"}
 
+    elif name == "browser_eval":
+        code = arguments.get("code", "")
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, bridge.send_command, {"type": "EVAL", "code": code}
+        )
+
     elif name == "browser_navigate":
         import subprocess, time
+        from urllib.parse import urlparse
         url = arguments.get("url", "")
+        target_domain = urlparse(url).netloc  # e.g. "open.spotify.com"
         subprocess.Popen(f'start chrome "{url}"', shell=True)
         await asyncio.sleep(2.5)
-        # Retry until the page loads (up to 15s)
+        # Retry until the active tab URL matches the target domain
         deadline = time.time() + 15
         result = {"error": "Page did not load within 15 seconds"}
         while time.time() < deadline:
@@ -155,10 +178,10 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             )
             if page.get("ok"):
                 page_url = page.get("data", {}).get("url", "")
-                if page_url and not page_url.startswith("chrome-extension://"):
+                if page_url and target_domain in page_url:
                     result = page.get("data", page)
                     break
-            await asyncio.sleep(1)
+            await asyncio.sleep(1.5)
 
     elif name == "get_browser_page":
         result = await asyncio.get_event_loop().run_in_executor(
