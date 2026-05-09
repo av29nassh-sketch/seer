@@ -19,5 +19,5 @@ dependencies = [
 eyeva = "eyeva.server:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/eyeva"
-Issues = "https://github.com/yourusername/eyeva/issues"
+Homepage = "https://github.com/av29nassh-sketch/eyeva"
+Issues = "https://github.com/av29nassh-sketch/eyeva/issues"

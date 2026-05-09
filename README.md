@@ -1,4 +1,4 @@
-# Eyeva
+# Eyeva · [github.com/av29nassh-sketch/eyeva](https://github.com/av29nassh-sketch/eyeva)
 
 Give AI agents structured vision and control over the Windows desktop — no screenshots, no OCR.
 
