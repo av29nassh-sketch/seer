@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Seer Bridge",
+  "version": "0.1.0",
+  "description": "Connects your browser to the Seer MCP server so AI agents can see and control web pages.",
+  "permissions": ["tabs", "activeTab", "scripting"],
+  "host_permissions": [
+    "http://localhost:7842/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Seer Bridge"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

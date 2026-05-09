@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: system-ui; padding: 12px; width: 200px; }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
+  .dot.connected { background: #22c55e; }
+  .dot.disconnected { background: #ef4444; }
+</style>
+</head>
+<body>
+<div class="status">
+  <div class="dot" id="dot"></div>
+  <span id="label">Checking...</span>
+</div>
+<script>
+async function check() {
+  try {
+    await fetch('http://localhost:7842/ping');
+    document.getElementById('dot').className = 'dot connected';
+    document.getElementById('label').textContent = 'Seer connected';
+  } catch {
+    document.getElementById('dot').className = 'dot disconnected';
+    document.getElementById('label').textContent = 'Seer not running';
+  }
+}
+check();
+</script>
+</body>
+</html>
