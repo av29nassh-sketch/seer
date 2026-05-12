@@ -1,5 +1,4 @@
 // Service worker — connects to Seer's Native Messaging Host with throttled reconnect.
-console.log('[seer] background.js loaded — version=executescript-1');
 
 const HOST_NAME = 'com.seer.host';
 let port = null;
