@@ -13,3 +13,8 @@ installer/build/
 installer/dist/
 installer/Output/
 *.spec
+
+# Internal — never commit
+Desktop-Vision-MCP-Build-Plan.pdf
+*-build-plan.pdf
+*-business-plan.*
