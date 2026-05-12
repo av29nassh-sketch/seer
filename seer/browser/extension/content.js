@@ -135,14 +135,9 @@ async function handleCommand(cmd) {
   }
 
   if (cmd.type === 'EVAL') {
-    try {
-      // eslint-disable-next-line no-eval
-      const result = eval(cmd.code);
-      const value = result instanceof Promise ? await result : result;
-      return { ok: true, result: value !== undefined ? String(value) : null };
-    } catch (e) {
-      return { ok: false, error: String(e) };
-    }
+    // EVAL is handled by background.js via chrome.scripting.executeScript — never reach here.
+    // Refuse so an attacker who somehow drives a bypassing message can't RCE.
+    return { ok: false, error: 'EVAL must be routed via background.js executeScript, not content.js' };
   }
 
   if (cmd.type === 'SCROLL_TO_BOTTOM') {

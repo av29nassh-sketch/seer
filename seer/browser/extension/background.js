@@ -14,6 +14,7 @@ function connect() {
   try {
     port = chrome.runtime.connectNative(HOST_NAME);
   } catch (e) {
+    console.error('[seer] connectNative failed — is the native messaging host registered? Run: python -m seer.browser.install_native_host <ext_id>', e);
     port = null;
     return;
   }
@@ -88,7 +89,11 @@ function connect() {
     }
     try {
       port.postMessage(result ?? { ok: false, error: 'No response from content script' });
-    } catch (_) {}
+    } catch (e) {
+      console.error('[seer] postMessage failed — native host likely died', e);
+      port = null;
+      setTimeout(connect, MIN_RECONNECT_MS);
+    }
   });
 
   port.onDisconnect.addListener(() => {

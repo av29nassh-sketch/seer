@@ -17,7 +17,6 @@ import urllib.error
 import websocket  # websocket-client
 
 _CDP_HOST = "http://localhost:9222"
-_CHROME_EXE = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 _lock = threading.Lock()
 _ws: websocket.WebSocket | None = None
 _msg_id = 0
@@ -80,14 +79,20 @@ def available() -> bool:
 
 def launch_chrome() -> bool:
     """Launch Chrome with remote debugging. Returns True if successful."""
+    from . import bridge
+    chrome_exe = bridge._find_chrome()
+    if not chrome_exe:
+        return False
     try:
-        subprocess.Popen([_CHROME_EXE, "--remote-debugging-port=9222"])
+        subprocess.Popen([chrome_exe, "--remote-debugging-port=9222"])
         for _ in range(10):
             time.sleep(1)
             if available():
                 return True
-    except Exception:
-        pass
+    except Exception as e:
+        # surface to caller via debug log; don't silently fail
+        import sys as _s
+        print(f"[cdp] launch_chrome failed: {e}", file=_s.stderr)
     return False
 
 

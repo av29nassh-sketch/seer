@@ -6,6 +6,7 @@ import subprocess
 import time
 import urllib.request
 import urllib.parse
+import urllib.error
 from .auth import get_access_token
 
 _API = "https://api.spotify.com/v1"
@@ -19,12 +20,16 @@ def _request(method: str, path: str, body: dict | None = None) -> dict:
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=10) as resp:
             content = resp.read()
             return json.loads(content) if content else {"ok": True}
     except urllib.error.HTTPError as e:
-        body_text = e.read().decode()
+        body_text = e.read().decode(errors="replace")
         return {"error": f"HTTP {e.code}: {body_text}"}
+    except urllib.error.URLError as e:
+        return {"error": f"Network error: {e.reason}"}
+    except TimeoutError:
+        return {"error": "Spotify API request timed out"}
 
 
 def search(query: str, limit: int = 5) -> dict:

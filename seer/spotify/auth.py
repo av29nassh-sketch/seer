@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 import json
+import os
+import stat
+import sys
 import time
+import urllib.error
 import urllib.request
 import urllib.parse
 from pathlib import Path
@@ -35,12 +39,30 @@ def get_access_token() -> str:
 
     req = urllib.request.Request(_TOKEN_URL, data=data, method="POST")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
-    with urllib.request.urlopen(req) as resp:
-        token_data = json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            token_data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        raise RuntimeError(f"Spotify token refresh failed: HTTP {e.code} {body}") from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Spotify token refresh network error: {e.reason}") from e
 
     _cache["access_token"] = token_data["access_token"]
     _cache["expires_at"] = time.time() + token_data.get("expires_in", 3600)
     return _cache["access_token"]
+
+
+def _restrict_perms(path: Path) -> None:
+    """Best-effort restrict file to owner only."""
+    try:
+        if sys.platform == "win32":
+            # Default user-profile NTFS ACLs already limit to current user.
+            pass
+        else:
+            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    except Exception:
+        pass
 
 
 def save_config(client_id: str, client_secret: str, refresh_token: str) -> None:
@@ -50,3 +72,4 @@ def save_config(client_id: str, client_secret: str, refresh_token: str) -> None:
         "client_secret": client_secret,
         "refresh_token": refresh_token,
     }, indent=2))
+    _restrict_perms(_CONFIG_PATH)
