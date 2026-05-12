@@ -7,3 +7,9 @@ build/
 venv/
 .env
 *.log
+
+# PyInstaller build outputs (regeneratable)
+installer/build/
+installer/dist/
+installer/Output/
+*.spec
