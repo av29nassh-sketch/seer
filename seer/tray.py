@@ -26,7 +26,7 @@ except ImportError:
     print("pystray and pillow required. Run: pip install pystray pillow")
     sys.exit(1)
 
-from .browser.constants import TCP_HOST, TCP_PORT, SEER_DIR
+from seer.browser.constants import TCP_HOST, TCP_PORT, SEER_DIR
 
 SEER_DIR.mkdir(parents=True, exist_ok=True)
 DISABLED_SENTINEL = SEER_DIR / "disabled"
