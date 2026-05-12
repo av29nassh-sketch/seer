@@ -21,3 +21,6 @@ Desktop-Vision-MCP-Build-Plan.pdf
 
 # Web Store submission zip — regenerate via the build script
 installer/seer-bridge-extension.zip
+
+# Submission screenshots (live in root for convenience, not source of truth)
+seer-popup*.png
