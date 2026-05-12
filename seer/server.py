@@ -539,10 +539,18 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 )
                 await asyncio.sleep(2.0)
         else:
-            # Active tab is a chrome:// page (or no content script). Open URL as new tab via shell.
+            # Active tab is a chrome:// page (or no content script). Open URL as new tab.
+            # Validate URL scheme to prevent command injection, then launch chrome directly (no shell).
             import subprocess
-            subprocess.Popen(f'start chrome "{url}"', shell=True)
-            await asyncio.sleep(2.0)
+            from urllib.parse import urlparse as _p
+            scheme = _p(url).scheme.lower()
+            if scheme not in ("http", "https"):
+                result = {"ok": False, "error": f"Refusing to navigate to non-http(s) URL: {url}"}
+            else:
+                chrome_exe = bridge._find_chrome()
+                if chrome_exe:
+                    subprocess.Popen([chrome_exe, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                await asyncio.sleep(2.0)
 
         # Retry until the active tab URL matches domain + path. Don't return full DOM — too heavy.
         deadline = time.time() + 12

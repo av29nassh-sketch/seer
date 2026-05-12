@@ -33,8 +33,8 @@ if sys.platform == "win32":
     msvcrt.setmode(sys.stdin.fileno(), _os.O_BINARY)
     msvcrt.setmode(sys.stdout.fileno(), _os.O_BINARY)
 
-TCP_HOST = "127.0.0.1"
-TCP_PORT = 7843
+from seer.browser.constants import TCP_HOST, TCP_PORT, MAX_MSG_BYTES
+from seer.browser import token as _token
 
 
 def _log(msg: str) -> None:
@@ -57,6 +57,9 @@ def _read_chrome():
     if len(raw_len) < 4:
         return None
     msg_len = struct.unpack("<I", raw_len)[0]
+    if msg_len > MAX_MSG_BYTES:
+        _log(f"chrome msg too large: {msg_len}")
+        return None
     raw = sys.stdin.buffer.read(msg_len)
     if len(raw) < msg_len:
         return None
@@ -81,6 +84,9 @@ def _read_tcp(sock) -> dict | None:
                 return None
             raw_len += chunk
         msg_len = struct.unpack("<I", raw_len)[0]
+        if msg_len > MAX_MSG_BYTES:
+            _log(f"tcp msg too large: {msg_len}")
+            return None
         raw = b""
         while len(raw) < msg_len:
             chunk = sock.recv(msg_len - len(raw))
@@ -101,18 +107,31 @@ def _write_tcp(sock, obj: dict) -> bool:
         return False
 
 
-# Pending TCP client awaiting Chrome's response. Set by handle_tcp_client, cleared by chrome reader.
+# Single in-flight request at a time. Serialize handler threads so each one
+# gets exclusive use of the Chrome stdin/stdout channel before releasing.
+_request_serializer = threading.Lock()
 _pending_lock = threading.Lock()
 _pending_sock = None
 
 
 def _chrome_reader_loop() -> None:
-    """Read responses from Chrome and route to the pending TCP client."""
+    """Read responses from Chrome and route to the pending TCP client.
+    Clears _pending_sock after delivery so the request handler knows to release the serializer."""
     global _pending_sock
     while True:
         msg = _read_chrome()
         if msg is None:
             _log("chrome stdin EOF — exiting")
+            # Notify any pending TCP client we're going away.
+            with _pending_lock:
+                sock = _pending_sock
+                _pending_sock = None
+            if sock is not None:
+                try:
+                    _write_tcp(sock, {"ok": False, "error": "Chrome disconnected"})
+                    sock.close()
+                except Exception:
+                    pass
             return
         with _pending_lock:
             sock = _pending_sock
@@ -128,16 +147,49 @@ def _chrome_reader_loop() -> None:
 
 
 def _handle_tcp_client(sock) -> None:
-    """One request per connection: read cmd → forward to Chrome → wait for chrome response → write to socket → close."""
+    """One request per connection: read auth frame → read cmd → forward to Chrome → wait for chrome response → write to socket → close.
+    Requests are serialized — only one in-flight at a time — so the _pending_sock slot is always for THIS handler."""
     global _pending_sock
     try:
+        # Auth check first — reject unauthenticated local processes.
+        auth = _read_tcp(sock)
+        expected = _token.get_or_create()
+        if not auth or auth.get("_auth") != expected:
+            _log("auth failed — closing")
+            try:
+                _write_tcp(sock, {"ok": False, "error": "auth required"})
+            except Exception:
+                pass
+            sock.close()
+            return
         cmd = _read_tcp(sock)
         if cmd is None:
+            sock.close()
             return
-        with _pending_lock:
-            _pending_sock = sock
-        _write_chrome(cmd)
-        # Reader thread will write to sock + close it
+        # Acquire serializer so we own the Chrome channel exclusively for this round-trip.
+        with _request_serializer:
+            with _pending_lock:
+                _pending_sock = sock
+            _write_chrome(cmd)
+            # Reader thread will write to sock + close it; we hold serializer until that happens.
+            # Wait for the slot to clear (response sent) before releasing.
+            for _ in range(300):  # up to ~30s
+                with _pending_lock:
+                    if _pending_sock is None:
+                        return
+                time.sleep(0.1)
+            # Timeout — release slot and tell client
+            with _pending_lock:
+                if _pending_sock is sock:
+                    _pending_sock = None
+                    try:
+                        _write_tcp(sock, {"ok": False, "error": "Chrome did not respond"})
+                    except Exception:
+                        pass
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
     except Exception as e:
         _log(f"handle_tcp_client error: {e}")
         try:

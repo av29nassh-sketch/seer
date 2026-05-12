@@ -1,6 +1,7 @@
 """UIA element tree extraction and filtering."""
 
 from __future__ import annotations
+import threading
 from typing import Generator
 import uiautomation as auto
 
@@ -18,11 +19,14 @@ _MAX_NODES = 150
 
 # Signature cache: id → (name, role, parent_name) for the most recent tree.
 # Used by click/type to re-locate elements if the tree shifted between calls.
+# Locked because async MCP handlers can call tree extraction concurrently in executor threads.
 _LAST_SNAPSHOT: dict[int, tuple[str, str, str]] = {}
+_snapshot_lock = threading.Lock()
 
 
 def get_snapshot() -> dict[int, tuple[str, str, str]]:
-    return _LAST_SNAPSHOT
+    with _snapshot_lock:
+        return dict(_LAST_SNAPSHOT)
 
 
 def _is_useful(control: auto.Control) -> bool:
@@ -78,7 +82,7 @@ def get_active_window_tree(window: str | None = None) -> dict:
             return {"error": "No foreground window found"}
 
     nodes = []
-    _LAST_SNAPSHOT.clear()
+    fresh_snapshot: dict[int, tuple[str, str, str]] = {}
     for node_id, control, depth in iter_tree(fw):
         name = (control.Name or "").strip()
         role = auto.ControlTypeNames.get(control.ControlType, "Unknown")
@@ -96,7 +100,12 @@ def get_active_window_tree(window: str | None = None) -> dict:
         except Exception:
             pass
         nodes.append(node)
-        _LAST_SNAPSHOT[node_id] = (name, role, parent_name)
+        fresh_snapshot[node_id] = (name, role, parent_name)
+
+    # Publish the snapshot atomically.
+    with _snapshot_lock:
+        _LAST_SNAPSHOT.clear()
+        _LAST_SNAPSHOT.update(fresh_snapshot)
 
     rect = fw.BoundingRectangle
     width = rect.right - rect.left

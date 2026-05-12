@@ -111,27 +111,29 @@ def click_element(element_id: int, window: str | None = None, confirm: bool = Fa
             "element": name,
             "reason": f"'{name}' looks destructive — ask the user before proceeding, then re-call with confirm=True",
         }
+    attempts: list[str] = []
     try:
         invoke = control.GetInvokePattern()
         invoke.Invoke()
         _settle()
         return {"success": True, "element": name, "method": "invoke"}
-    except Exception:
-        pass
+    except Exception as e:
+        attempts.append(f"invoke: {e}")
     try:
         toggle = control.GetTogglePattern()
         toggle.Toggle()
         _settle()
         return {"success": True, "element": name, "method": "toggle"}
-    except Exception:
-        pass
+    except Exception as e:
+        attempts.append(f"toggle: {e}")
     try:
         _move_cursor_to(control)
         control.Click()
         _settle()
         return {"success": True, "element": name, "method": "physical_click"}
     except Exception as e:
-        return {"error": str(e)}
+        attempts.append(f"physical_click: {e}")
+        return {"error": "All click strategies failed", "attempts": attempts}
 
 
 def double_click_element(element_id: int, window: str | None = None) -> dict:

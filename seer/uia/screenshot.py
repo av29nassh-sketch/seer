@@ -9,7 +9,7 @@ import uiautomation as auto
 try:
     from PIL import Image, ImageGrab
     _PIL_OK = True
-except Exception:
+except ImportError:
     _PIL_OK = False
 
 

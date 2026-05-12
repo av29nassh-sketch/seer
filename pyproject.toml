@@ -16,10 +16,12 @@ dependencies = [
     "websocket-client>=1.0.0",
     "pillow>=10.0.0",
     "pywin32>=306; sys_platform == 'win32'",
+    "pystray>=0.19",
 ]
 
 [project.scripts]
 seer = "seer.server:main"
+seer-tray = "seer.tray:main"
 
 [project.urls]
 Homepage = "https://github.com/av29nassh-sketch/seer"

@@ -14,8 +14,8 @@ import struct
 import subprocess
 import time
 
-TCP_HOST = "127.0.0.1"
-TCP_PORT = 7843
+from .constants import TCP_HOST, TCP_PORT, MAX_MSG_BYTES
+from . import token as _token
 
 _CHROME_PATHS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -52,7 +52,9 @@ def _ensure_chrome_running(wait_seconds: float = 30.0, initial_url: str | None =
         if initial_url:
             args.append(initial_url)
         subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
+    except (OSError, ValueError) as e:
+        import sys as _s
+        print(f"[seer] Chrome launch failed: {e}", file=_s.stderr)
         return False
     deadline = time.time() + wait_seconds
     while time.time() < deadline:
@@ -81,6 +83,8 @@ def _read_frame(sock) -> dict | None:
                 return None
             raw_len += chunk
         msg_len = struct.unpack("<I", raw_len)[0]
+        if msg_len > MAX_MSG_BYTES:
+            return None
         raw = b""
         while len(raw) < msg_len:
             chunk = sock.recv(msg_len - len(raw))
@@ -94,13 +98,16 @@ def _read_frame(sock) -> dict | None:
 
 def send_command(cmd: dict, timeout: float = 10.0) -> dict:
     """Open a TCP connection to the native host, send the command, read the response, close.
-    Auto-launches Chrome if the native host isn't reachable."""
+    Auto-launches Chrome if the native host isn't reachable. Authenticates with a shared token."""
     if not _is_native_host_up():
         if not _ensure_chrome_running():
             return {"ok": False, "error": "Chrome not running and could not launch it"}
     try:
         with socket.create_connection((TCP_HOST, TCP_PORT), timeout=2.0) as sock:
             sock.settimeout(timeout)
+            # Authenticate before sending the real command.
+            auth = {"_auth": _token.get_or_create()}
+            sock.sendall(_frame(auth))
             sock.sendall(_frame(cmd))
             result = _read_frame(sock)
             return result or {"ok": False, "error": "Empty response from native host"}
