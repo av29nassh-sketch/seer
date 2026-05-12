@@ -143,7 +143,9 @@ Each layer is independent. The Chrome bridge uses Native Messaging (no debug fla
 
 **Installer: working.** Single .exe bundles everything.
 
-**Pre-launch:** Chrome Web Store submission, demo videos, the [Jarvis Builder's Handbook](docs/jarvis-handbook.md) (coming).
+**Pre-launch:** Chrome Web Store submission, demo videos.
+
+📖 **[Read: How to Build Jarvis (For Real This Time)](docs/jarvis-handbook.md)** — the actual end-to-end guide to building a real personal AI assistant using Seer + commodity components. Five thousand words, working code for every layer.
 
 ---
 
