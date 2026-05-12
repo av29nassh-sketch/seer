@@ -13,6 +13,9 @@ keywords = ["mcp", "windows", "uia", "automation", "ai-agent", "desktop"]
 dependencies = [
     "mcp>=1.0.0",
     "uiautomation>=2.0.0",
+    "websocket-client>=1.0.0",
+    "pillow>=10.0.0",
+    "pywin32>=306; sys_platform == 'win32'",
 ]
 
 [project.scripts]

@@ -1,97 +1,108 @@
 """
-Local HTTP bridge between the Chrome extension and the MCP server.
+Bridge between MCP seer and the Native Messaging Host (which talks to the Chrome extension).
 
-The extension polls GET /command for pending commands and POSTs results to /result.
-MCP tools call send_command() which blocks until the extension responds.
+Inverted architecture: the native_host is a TCP server on localhost:7843. We connect
+fresh per command. No daemon thread, no shared state, no pipe lifecycle nonsense.
+This works regardless of how many seer processes Claude Code spawns.
 """
 
 from __future__ import annotations
-import asyncio
 import json
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from socketserver import ThreadingMixIn
+import os
+import socket
+import struct
+import subprocess
+import time
+
+TCP_HOST = "127.0.0.1"
+TCP_PORT = 7843
+
+_CHROME_PATHS = [
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+]
 
 
-class _ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
-    daemon_threads = True
-
-PORT = 7842
-_pending_command: dict | None = None
-_pending_result: dict | None = None
-_lock = threading.Lock()
-_result_event = threading.Event()
+def _is_native_host_up() -> bool:
+    try:
+        with socket.create_connection((TCP_HOST, TCP_PORT), timeout=0.3):
+            return True
+    except OSError:
+        return False
 
 
-class _Handler(BaseHTTPRequestHandler):
-    def log_message(self, *args):
-        pass  # silence access logs
-
-    def _send(self, code: int, body: dict) -> None:
-        data = json.dumps(body).encode()
-        self.send_response(code)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Content-Length', str(len(data)))
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        self.wfile.write(data)
-
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
-
-    def do_GET(self):
-        global _pending_command
-        if self.path == '/ping':
-            self._send(200, {'ok': True})
-        elif self.path == '/command':
-            with _lock:
-                cmd = _pending_command
-                _pending_command = None
-            if cmd:
-                self._send(200, cmd)
-            else:
-                self._send(204, {})
-        else:
-            self._send(404, {'error': 'not found'})
-
-    def do_POST(self):
-        global _pending_result
-        if self.path == '/result':
-            length = int(self.headers.get('Content-Length', 0))
-            body = json.loads(self.rfile.read(length))
-            with _lock:
-                _pending_result = body
-            _result_event.set()
-            self._send(200, {'ok': True})
-        else:
-            self._send(404, {'error': 'not found'})
+def _find_chrome() -> str | None:
+    for p in _CHROME_PATHS:
+        if os.path.exists(p):
+            return p
+    return None
 
 
-def start(port: int = PORT) -> None:
-    """Start the bridge server in a background daemon thread."""
-    server = _ThreadingHTTPServer(('127.0.0.1', port), _Handler)
-    t = threading.Thread(target=server.serve_forever, daemon=True)
-    t.start()
+def _ensure_chrome_running(wait_seconds: float = 30.0, initial_url: str | None = None) -> bool:
+    """If native host TCP port isn't reachable, launch Chrome and wait for the extension.
+    Pass initial_url to make the first tab a real page instead of chrome://newtab/."""
+    if _is_native_host_up():
+        return True
+    chrome = _find_chrome()
+    if not chrome:
+        return False
+    try:
+        args = [chrome]
+        if initial_url:
+            args.append(initial_url)
+        subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        return False
+    deadline = time.time() + wait_seconds
+    while time.time() < deadline:
+        if _is_native_host_up():
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def start() -> None:
+    """No-op for compatibility with old API. Native host is owned by Chrome, not us."""
+    return
+
+
+def _frame(obj: dict) -> bytes:
+    data = json.dumps(obj).encode("utf-8")
+    return struct.pack("<I", len(data)) + data
+
+
+def _read_frame(sock) -> dict | None:
+    try:
+        raw_len = b""
+        while len(raw_len) < 4:
+            chunk = sock.recv(4 - len(raw_len))
+            if not chunk:
+                return None
+            raw_len += chunk
+        msg_len = struct.unpack("<I", raw_len)[0]
+        raw = b""
+        while len(raw) < msg_len:
+            chunk = sock.recv(msg_len - len(raw))
+            if not chunk:
+                return None
+            raw += chunk
+        return json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None
 
 
 def send_command(cmd: dict, timeout: float = 10.0) -> dict:
-    """
-    Send a command to the Chrome extension and wait for the result.
-    Blocks until the extension responds or timeout expires.
-    """
-    global _pending_command, _pending_result
-    with _lock:
-        _pending_command = cmd
-        _pending_result = None
-    _result_event.clear()
-
-    if not _result_event.wait(timeout):
-        return {'ok': False, 'error': 'Browser extension did not respond (is it installed and Chrome open?)'}
-
-    with _lock:
-        result = _pending_result
-    return result or {'ok': False, 'error': 'Empty response from extension'}
+    """Open a TCP connection to the native host, send the command, read the response, close.
+    Auto-launches Chrome if the native host isn't reachable."""
+    if not _is_native_host_up():
+        if not _ensure_chrome_running():
+            return {"ok": False, "error": "Chrome not running and could not launch it"}
+    try:
+        with socket.create_connection((TCP_HOST, TCP_PORT), timeout=2.0) as sock:
+            sock.settimeout(timeout)
+            sock.sendall(_frame(cmd))
+            result = _read_frame(sock)
+            return result or {"ok": False, "error": "Empty response from native host"}
+    except (ConnectionRefusedError, socket.timeout, OSError) as e:
+        return {"ok": False, "error": f"Browser extension not connected ({e})"}

@@ -4,34 +4,12 @@ import json
 import urllib.parse
 import urllib.request
 import webbrowser
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from .auth import save_config
 
-_REDIRECT_URI = "http://localhost:8888/callback"
+_REDIRECT_URI = "http://127.0.0.1:8888/callback"
 _SCOPE = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
 _AUTH_URL = "https://accounts.spotify.com/authorize"
 _TOKEN_URL = "https://accounts.spotify.com/api/token"
-
-_auth_code: str | None = None
-
-
-class _CallbackHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        global _auth_code
-        parsed = urllib.parse.urlparse(self.path)
-        params = urllib.parse.parse_qs(parsed.query)
-        if "code" in params:
-            _auth_code = params["code"][0]
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"<h2>Spotify connected! You can close this tab.</h2>")
-        else:
-            self.send_response(400)
-            self.end_headers()
-            self.wfile.write(b"<h2>Error: no code in callback.</h2>")
-
-    def log_message(self, *args):
-        pass
 
 
 def run():
@@ -46,20 +24,24 @@ def run():
         "scope": _SCOPE,
     })
     auth_url = f"{_AUTH_URL}?{params}"
-    print(f"\nOpening browser for authorization...")
+    print("\nOpening browser for Spotify authorization...")
     webbrowser.open(auth_url)
 
-    print("Waiting for callback on http://localhost:8888/callback ...")
-    server = HTTPServer(("localhost", 8888), _CallbackHandler)
-    server.handle_request()
+    print("\nAfter you click 'Agree' in the browser, Spotify will redirect to a")
+    print("page that fails to load (localhost). That's expected.")
+    print("Copy the full URL from your browser's address bar and paste it here.\n")
+    callback_url = input("Paste the full redirect URL: ").strip()
 
-    if not _auth_code:
-        print("Error: did not receive auth code.")
+    parsed = urllib.parse.urlparse(callback_url)
+    params_out = urllib.parse.parse_qs(parsed.query)
+    code = params_out.get("code", [None])[0]
+    if not code:
+        print("Error: no 'code' found in the URL. Make sure you copied the full URL.")
         return
 
     data = urllib.parse.urlencode({
         "grant_type": "authorization_code",
-        "code": _auth_code,
+        "code": code,
         "redirect_uri": _REDIRECT_URI,
         "client_id": client_id,
         "client_secret": client_secret,
@@ -67,8 +49,12 @@ def run():
 
     req = urllib.request.Request(_TOKEN_URL, data=data, method="POST")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
-    with urllib.request.urlopen(req) as resp:
-        token_data = json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req) as resp:
+            token_data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        print(f"Token exchange failed ({e.code}): {e.read().decode()}")
+        return
 
     refresh_token = token_data.get("refresh_token")
     if not refresh_token:

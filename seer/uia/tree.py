@@ -16,6 +16,14 @@ _SKIP_CONTROL_TYPES = {
 _MAX_DEPTH = 6
 _MAX_NODES = 150
 
+# Signature cache: id → (name, role, parent_name) for the most recent tree.
+# Used by click/type to re-locate elements if the tree shifted between calls.
+_LAST_SNAPSHOT: dict[int, tuple[str, str, str]] = {}
+
+
+def get_snapshot() -> dict[int, tuple[str, str, str]]:
+    return _LAST_SNAPSHOT
+
 
 def _is_useful(control: auto.Control) -> bool:
     if not control.IsEnabled:
@@ -70,25 +78,45 @@ def get_active_window_tree(window: str | None = None) -> dict:
             return {"error": "No foreground window found"}
 
     nodes = []
+    _LAST_SNAPSHOT.clear()
     for node_id, control, depth in iter_tree(fw):
-        node: dict = {
-            "id": node_id,
-            "name": (control.Name or "").strip(),
-            "role": auto.ControlTypeNames.get(control.ControlType, "Unknown"),
-            "value": "",
-            "depth": depth,
-        }
+        name = (control.Name or "").strip()
+        role = auto.ControlTypeNames.get(control.ControlType, "Unknown")
+        parent_name = ""
+        try:
+            parent = control.GetParentControl()
+            if parent is not None:
+                parent_name = (parent.Name or "").strip()
+        except Exception:
+            pass
+        node: dict = {"id": node_id, "name": name, "role": role, "value": "", "depth": depth}
         try:
             vp = control.GetValuePattern()
             node["value"] = vp.Value or ""
         except Exception:
             pass
         nodes.append(node)
+        _LAST_SNAPSHOT[node_id] = (name, role, parent_name)
 
-    return {
+    rect = fw.BoundingRectangle
+    width = rect.right - rect.left
+    height = rect.bottom - rect.top
+    is_large = width > 600 and height > 400
+    looks_broken = is_large and len(nodes) < 5
+    class_name = (fw.ClassName or "").strip()
+    # Common Electron / Chromium-derived window classes
+    is_electron_like = class_name in {"Chrome_WidgetWin_1", "Chrome_WidgetWin_0", "Intermediate D3D Window"}
+
+    result = {
         "window_title": (fw.Name or "").strip(),
-        "window_class": (fw.ClassName or "").strip(),
+        "window_class": class_name,
         "node_count": len(nodes),
         "truncated": len(nodes) >= _MAX_NODES,
         "tree": nodes,
     }
+    if looks_broken or (is_electron_like and len(nodes) < 10):
+        result["hint"] = (
+            "UIA tree looks sparse — likely an Electron app (VS Code, Slack, Discord, Notion) "
+            "or a custom-rendered UI. Use screenshot_window + click_at(x, y) as fallback."
+        )
+    return result

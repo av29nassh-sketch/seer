@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 import json
+import subprocess
+import time
 import urllib.request
 import urllib.parse
 from .auth import get_access_token
@@ -45,6 +47,35 @@ def search(query: str, limit: int = 5) -> dict:
     }
 
 
+def _ensure_active_device() -> str | None:
+    """Launch Spotify if no active device, return device_id or None."""
+    devices = get_devices().get("devices", [])
+    if devices:
+        active = next((d for d in devices if d.get("is_active")), devices[0])
+        return active["id"]
+
+    # Launch Spotify desktop
+    import os
+    spotify_exe = os.path.expandvars(r"%APPDATA%\Spotify\Spotify.exe")
+    if os.path.exists(spotify_exe):
+        subprocess.Popen([spotify_exe])
+    else:
+        subprocess.Popen(["cmd", "/c", "start", "spotify:"])
+
+    # Wait up to 12s for a device to appear
+    for _ in range(6):
+        time.sleep(2)
+        devices = get_devices().get("devices", [])
+        if devices:
+            # Activate it by transferring playback
+            device_id = devices[0]["id"]
+            _request("PUT", "/me/player", {"device_ids": [device_id], "play": False})
+            time.sleep(1)
+            return device_id
+
+    return None
+
+
 def play(uri: str | None = None, device_id: str | None = None) -> dict:
     body: dict = {}
     if uri:
@@ -52,7 +83,14 @@ def play(uri: str | None = None, device_id: str | None = None) -> dict:
     path = "/me/player/play"
     if device_id:
         path += f"?device_id={device_id}"
-    return _request("PUT", path, body)
+    result = _request("PUT", path, body)
+    # Only pay the device-lookup cost if no active device
+    if "error" in result and "NO_ACTIVE_DEVICE" in result.get("error", ""):
+        device_id = _ensure_active_device()
+        if device_id:
+            path = f"/me/player/play?device_id={device_id}"
+            result = _request("PUT", path, body)
+    return result
 
 
 def pause() -> dict:
@@ -83,6 +121,30 @@ def get_current() -> dict:
         "progress_ms": result.get("progress_ms", 0),
         "duration_ms": item["duration_ms"],
     }
+
+
+def play_context(context_uri: str) -> dict:
+    """Play a Spotify context (playlist, album, artist, or liked songs collection)."""
+    devices = get_devices().get("devices", [])
+    device_id = None
+    if devices:
+        active = next((d for d in devices if d.get("is_active")), devices[0])
+        device_id = active["id"]
+
+    body: dict = {"context_uri": context_uri}
+    path = "/me/player/play"
+    if device_id:
+        path += f"?device_id={device_id}"
+    result = _request("PUT", path, body)
+    if "error" in result and "NO_ACTIVE_DEVICE" in result.get("error", ""):
+        device_id = _ensure_active_device()
+        if device_id:
+            result = _request("PUT", f"/me/player/play?device_id={device_id}", body)
+    return result
+
+
+def get_current_user() -> dict:
+    return _request("GET", "/me")
 
 
 def get_devices() -> dict:
