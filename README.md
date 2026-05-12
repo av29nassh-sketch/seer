@@ -52,8 +52,9 @@ Seer skips the pixels. We read Windows UI Automation (UIA) trees + Chrome DOM di
 - `browser_extract` — CSP-safe data extraction by CSS selector + attribute
 - `browser_eval` — arbitrary JS (works on most sites; blocked by strict CSP)
 
-**Spotify**
+**Spotify** *(bundled convenience tool — uses the Spotify Web API directly, not the desktop app)*
 - `spotify_search`, `spotify_play`, `spotify_pause`, `spotify_next`, `spotify_previous`, `spotify_current`, `spotify_play_liked`
+- Requires a one-time `python -m seer.spotify.setup` to provide your OAuth credentials. This is a bundled exception to the "Seer is the muscles, install separate MCPs for API-driven services" rule — it shipped early and stayed because it's useful.
 
 **Reliability**
 - Resilient element matching survives UI shifts mid-session
