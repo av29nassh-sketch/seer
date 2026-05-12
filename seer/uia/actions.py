@@ -5,13 +5,21 @@ import ctypes
 import re
 import time
 import uiautomation as auto
+from pathlib import Path
+
 from .tree import iter_tree, find_window_by_title, get_snapshot
 
 _SETTLE_MS = 0.25  # wait after every successful action so UI has time to redraw
+_SILENT_SENTINEL = Path.home() / ".seer" / "silent"
 
 
 def _settle() -> None:
     time.sleep(_SETTLE_MS)
+
+
+def _is_silent_mode() -> bool:
+    """Skip cursor animation if the user toggled silent mode in the tray."""
+    return _SILENT_SENTINEL.exists()
 
 
 _DESTRUCTIVE_PATTERNS = re.compile(
@@ -29,7 +37,9 @@ def _is_destructive(name: str) -> bool:
 
 
 def _move_cursor_to(control: auto.Control) -> None:
-    """Smoothly move the physical mouse cursor to the center of the element."""
+    """Smoothly move the physical mouse cursor to the center of the element. No-op in silent mode."""
+    if _is_silent_mode():
+        return
     try:
         rect = control.BoundingRectangle
         cx = rect.left + (rect.right - rect.left) // 2
@@ -152,20 +162,23 @@ def double_click_element(element_id: int, window: str | None = None) -> dict:
 
 
 def click_at_coords(x: int, y: int, double: bool = False) -> dict:
-    """Click at absolute screen coordinates — universal fallback when UIA can't find the target."""
+    """Click at absolute screen coordinates — universal fallback when UIA can't find the target.
+    Skips cursor animation in silent mode (tray toggle)."""
     try:
-        # Animated cursor move for visibility
-        class POINT(ctypes.Structure):
-            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-        pt = POINT()
-        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
-        sx, sy = pt.x, pt.y
-        steps = 12
-        for i in range(1, steps + 1):
-            t = i / steps
-            t = t * t * (3 - 2 * t)
-            ctypes.windll.user32.SetCursorPos(int(sx + (x - sx) * t), int(sy + (y - sy) * t))
-            time.sleep(0.01)
+        if not _is_silent_mode():
+            # Animated cursor move for visibility
+            class POINT(ctypes.Structure):
+                _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+            pt = POINT()
+            ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+            sx, sy = pt.x, pt.y
+            steps = 12
+            for i in range(1, steps + 1):
+                t = i / steps
+                t = t * t * (3 - 2 * t)
+                ctypes.windll.user32.SetCursorPos(int(sx + (x - sx) * t), int(sy + (y - sy) * t))
+                time.sleep(0.01)
+        ctypes.windll.user32.SetCursorPos(x, y)
 
         # Mouse down + up
         MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP = 0x0002, 0x0004

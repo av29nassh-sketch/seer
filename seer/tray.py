@@ -30,9 +30,10 @@ from seer.browser.constants import TCP_HOST, TCP_PORT, SEER_DIR
 
 SEER_DIR.mkdir(parents=True, exist_ok=True)
 DISABLED_SENTINEL = SEER_DIR / "disabled"
+SILENT_SENTINEL = SEER_DIR / "silent"
 LOG_DIR = SEER_DIR
 
-_state = {"browser": False, "disabled": DISABLED_SENTINEL.exists()}
+_state = {"browser": False, "disabled": DISABLED_SENTINEL.exists(), "silent": SILENT_SENTINEL.exists()}
 
 
 # ── Icon rendering ──────────────────────────────────────────────────────────
@@ -69,11 +70,15 @@ def _refresh_loop(icon: pystray.Icon) -> None:
     while True:
         browser = _is_browser_bridge_up()
         disabled = DISABLED_SENTINEL.exists()
-        if browser != _state["browser"] or disabled != _state["disabled"]:
+        silent = SILENT_SENTINEL.exists()
+        if (browser != _state["browser"] or disabled != _state["disabled"]
+                or silent != _state["silent"]):
             _state["browser"] = browser
             _state["disabled"] = disabled
+            _state["silent"] = silent
             icon.icon = _make_icon(browser, disabled)
             icon.title = _status_text(browser, disabled)
+            icon.update_menu()
         time.sleep(2.0)
 
 
@@ -94,6 +99,13 @@ def _toggle_disabled(icon, item) -> None:
         DISABLED_SENTINEL.unlink()
     else:
         DISABLED_SENTINEL.write_text("disabled at " + time.strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def _toggle_silent(icon, item) -> None:
+    if SILENT_SENTINEL.exists():
+        SILENT_SENTINEL.unlink()
+    else:
+        SILENT_SENTINEL.write_text("silent at " + time.strftime("%Y-%m-%d %H:%M:%S"))
 
 
 def _open_homepage(icon, item) -> None:
@@ -134,6 +146,11 @@ def main() -> None:
         pystray.MenuItem(
             lambda item: "Enable seer" if _state["disabled"] else "Disable seer",
             _toggle_disabled,
+        ),
+        pystray.MenuItem(
+            "Silent mode (no cursor animation)",
+            _toggle_silent,
+            checked=lambda item: _state["silent"],
         ),
         pystray.MenuItem("Open seer on GitHub", _open_homepage),
         pystray.Menu.SEPARATOR,
