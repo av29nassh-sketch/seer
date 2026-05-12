@@ -3,30 +3,26 @@
 <head>
 <meta charset="utf-8">
 <style>
-  body { font-family: system-ui; padding: 12px; width: 200px; }
-  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  body { font-family: system-ui; padding: 14px; width: 220px; color: #1c2133; }
+  h1 { font-size: 14px; margin: 0 0 10px; }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 10px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
-  .dot.connected { background: #22c55e; }
-  .dot.disconnected { background: #ef4444; }
+  .dot.ok { background: #3cc85a; }
+  .dot.bad { background: #ef4444; }
+  .hint { font-size: 11px; color: #6b7280; line-height: 1.4; }
+  a { color: #3b82f6; text-decoration: none; }
 </style>
 </head>
 <body>
+<h1>Seer Bridge</h1>
 <div class="status">
   <div class="dot" id="dot"></div>
   <span id="label">Checking...</span>
 </div>
-<script>
-async function check() {
-  try {
-    await fetch('http://localhost:7842/ping');
-    document.getElementById('dot').className = 'dot connected';
-    document.getElementById('label').textContent = 'Seer connected';
-  } catch {
-    document.getElementById('dot').className = 'dot disconnected';
-    document.getElementById('label').textContent = 'Seer not running';
-  }
-}
-check();
-</script>
+<div class="hint" id="hint">
+  Pairs with the Seer desktop app.<br>
+  <a href="https://github.com/av29nassh-sketch/seer" target="_blank">github.com/av29nassh-sketch/seer</a>
+</div>
+<script src="popup.js"></script>
 </body>
 </html>

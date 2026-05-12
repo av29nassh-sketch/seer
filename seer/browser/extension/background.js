@@ -103,6 +103,14 @@ function connect() {
 
 connect();
 
+// Popup uses this to show connection status.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === 'PING_BRIDGE') {
+    sendResponse({ ok: !!port });
+    return false;
+  }
+});
+
 // Keep service worker alive — MV3 idles workers after ~30s, which would kill the native host.
 chrome.alarms.create('seer-keepalive', { periodInMinutes: 0.4 }); // every 24s
 chrome.alarms.onAlarm.addListener((alarm) => {

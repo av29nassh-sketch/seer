@@ -18,3 +18,6 @@ installer/Output/
 Desktop-Vision-MCP-Build-Plan.pdf
 *-build-plan.pdf
 *-business-plan.*
+
+# Web Store submission zip — regenerate via the build script
+installer/seer-bridge-extension.zip
