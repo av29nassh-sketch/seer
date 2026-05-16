@@ -7,9 +7,15 @@ import time
 import uiautomation as auto
 from pathlib import Path
 
-from .tree import iter_tree, find_window_by_title, get_snapshot
+from .tree import iter_tree, find_window_by_title, get_snapshot, get_cached_control
 
-_SETTLE_MS = 0.25  # wait after every successful action so UI has time to redraw
+# The uiautomation library inserts a hidden time.sleep(0.5) after EVERY operation
+# (Invoke/Toggle/SetValue/Click) via OPERATION_WAIT_TIME. That blanket sleep is the
+# single biggest source of latency. Kill it — seer manages its own targeted settle
+# only for genuinely-async paths (physical_click, SendKeys).
+auto.uiautomation.OPERATION_WAIT_TIME = 0.0
+
+_SETTLE_MS = 0.20  # wait after async actions (physical click / sendkeys) so UI redraws
 _SILENT_SENTINEL = Path.home() / ".seer" / "silent"
 
 
@@ -70,12 +76,23 @@ def _find_by_id(target_id: int, window: str | None = None) -> auto.Control | Non
     """
     Find the control matching the given tree node id.
 
-    Resilient strategy:
+    Strategy (fast → slow):
+      0. If the cached live Control reference is still usable, return it. Skips full tree walk.
       1. Walk live tree, look for matching id.
       2. If id matches but signature (name, role, parent_name) changed, ignore — tree shifted.
       3. If no exact id match, fall back to searching for the original signature by content.
     Returns None only if no candidate matches the original signature.
     """
+    # Fast path: cached Control from the last get_active_window_tree call.
+    cached = get_cached_control(target_id)
+    if cached is not None:
+        try:
+            # Cheap aliveness probe — accessing BoundingRectangle raises COMError on stale refs.
+            _ = cached.BoundingRectangle
+            return cached
+        except Exception:
+            pass  # stale, fall through to full lookup
+
     if window:
         fw = find_window_by_title(window)
     else:
@@ -122,23 +139,25 @@ def click_element(element_id: int, window: str | None = None, confirm: bool = Fa
             "reason": f"'{name}' looks destructive — ask the user before proceeding, then re-call with confirm=True",
         }
     attempts: list[str] = []
+    # waitTime=0 — the library's default is 0.5s sleep baked in as a frozen default arg.
+    # invoke + toggle are synchronous; UI is already updated when they return.
     try:
         invoke = control.GetInvokePattern()
-        invoke.Invoke()
-        _settle()
+        invoke.Invoke(waitTime=0)
         return {"success": True, "element": name, "method": "invoke"}
     except Exception as e:
         attempts.append(f"invoke: {e}")
     try:
         toggle = control.GetTogglePattern()
-        toggle.Toggle()
-        _settle()
+        toggle.Toggle(waitTime=0)
         return {"success": True, "element": name, "method": "toggle"}
     except Exception as e:
         attempts.append(f"toggle: {e}")
+    # physical_click goes through the OS message queue — UI may still be repainting after return.
+    # Keep our own targeted settle so the next read sees fresh state.
     try:
         _move_cursor_to(control)
-        control.Click()
+        control.Click(waitTime=0)
         _settle()
         return {"success": True, "element": name, "method": "physical_click"}
     except Exception as e:
@@ -154,7 +173,7 @@ def double_click_element(element_id: int, window: str | None = None) -> dict:
     name = (control.Name or "").strip()
     try:
         _move_cursor_to(control)
-        control.DoubleClick()
+        control.DoubleClick(waitTime=0)
         _settle()
         return {"success": True, "element": name, "method": "physical_doubleclick"}
     except Exception as e:
@@ -201,14 +220,15 @@ def type_into_element(element_id: int, text: str, window: str | None = None) -> 
         return {"error": f"Element id {element_id} not found in current window"}
     try:
         control.SetFocus()
+        # value_pattern is synchronous — waitTime=0 kills the library's frozen 0.5s default
         try:
             vp = control.GetValuePattern()
-            vp.SetValue(text)
-            _settle()
+            vp.SetValue(text, waitTime=0)
             return {"success": True, "method": "value_pattern"}
         except Exception:
             pass
-        control.SendKeys(text)
+        # SendKeys goes through the OS keyboard queue — async, keep a short settle.
+        control.SendKeys(text, waitTime=0)
         _settle()
         return {"success": True, "method": "send_keys"}
     except Exception as e:

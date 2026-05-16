@@ -7,7 +7,14 @@ Run this with Notepad open. You should see the element tree print, then text app
 """
 
 from __future__ import annotations
+import sys
 import time
+
+# Tolerate unusual Unicode (icon-font glyphs, etc.) in element names on Windows console.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 import uiautomation as auto
 
